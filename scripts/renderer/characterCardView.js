@@ -220,6 +220,41 @@ function cardTabHtml() {
 // ---------------------------------------------------------------- HTML：一个人的卡
 
 
+/** 头部条：好感、臣服（状态标签优先，没有就用表格里的数） */
+function headMetersHtml(p, st) {
+    const out = [];
+    for (const word of ['好感', '臣服']) {
+        const label = Object.keys(st?.fields || {}).find(k => k.includes(word));
+        const v = label ? CS.parseValue(st.fields[label]) : {};
+        const num = Number.isFinite(v.num) ? v.num : p.numbers?.[word];
+        if (!Number.isFinite(num)) continue;
+        const max = Number.isFinite(v.max) ? v.max : 100;
+        const delta = Number.isFinite(v.delta) && v.delta ? `<small class="${v.delta > 0 ? 'is-up' : 'is-down'}">${esc(signed(v.delta))}</small>` : '';
+        out.push(`<div class="v2cc-cardmeter"><span class="v2cc-k">${word}</span>${meterHtml(num, max)}<b>${esc(num)}</b>${delta}</div>`);
+    }
+    return out.join('');
+}
+
+/** 卡牌式头部（展开时）：左边竖图，右边名字、关系、好感/臣服、心情、换人按钮 */
+function cardHeadHtml(p, st, present, pinned) {
+    const src = CS.getAvatarFull(p.primary) || CS.getAvatar(p.primary);
+    const pic = src ? `<img src="${esc(src)}" alt="" loading="lazy">` : `<span class="v2cc-cardpic-ph">${esc(clean(p.primary).slice(0, 1))}</span>`;
+    const rel = relationOf(p);
+    const moodLabel = Object.keys(st?.fields || {}).find(k => /心情|情绪/.test(k));
+    const mood = moodLabel ? clean(st.fields[moodLabel]) : '';
+    const hidden = ui.privacy;
+    return `<div class="v2cc-cardhead">
+<button class="v2cc-cardpic" data-act="avatar" aria-label="头像">${pic}</button>
+<div class="v2cc-cardinfo">
+<div class="v2cc-cardname" data-act="head"><span>${esc(p.primary)}</span><button class="v2cc-pin${pinned ? ' is-on' : ''}" data-act="pin" aria-label="置顶">${pinned ? '★' : '☆'}</button></div>
+<div class="v2cc-cardsub" data-act="head"><span class="v2cc-badge${present ? ' is-on' : ''}">${present ? '在场' : '不在场'}</span>${p.aliases.length ? `<span>${esc(p.aliases.join(' · '))}</span>` : ''}</div>
+${rel ? `<div class="v2cc-cardline">${esc(short(rel, 40))}</div>` : ''}
+${hidden ? '' : headMetersHtml(p, st)}
+${mood && !hidden ? `<div class="v2cc-cardline">${esc(short(showLabel(moodLabel), 6))}：${esc(short(mood, 40))}</div>` : ''}
+<div class="v2cc-cardnav"><button class="v2cc-btn" data-act="prev">‹ 上一个</button><button class="v2cc-btn" data-act="next">下一个 ›</button></div>
+</div></div>`;
+}
+
 const samePath = (a, b) => !!a && !!b && safe(() => decodeURIComponent(a), a) === safe(() => decodeURIComponent(b), b);
 const histIndex = (srcs, full) => srcs.findIndex(x => samePath(x, full));
 
@@ -294,6 +329,7 @@ function profileHtml(p) {
 <button class="v2cc-nav" data-act="next" aria-label="下一个">›</button></div>`;
     if (ui.collapsed) return `<div class="v2cc-profile is-collapsed" data-primary="${esc(p.primary)}">${head}</div>`;
     const avaMenu = ui.avaMenu === p.primary ? avatarMenuHtml(p) : '';
+    const cardHead = cardHeadHtml(p, st, present, pinned);
 
     const a = appearStats(p.primary);
     const stats = [`约 ${p.tokens || 0} token`];
@@ -301,7 +337,7 @@ function profileHtml(p) {
     else stats.push('还没记到出场');
     if (p.empty?.length) stats.push(`${p.empty.length} 列空`);
 
-    return `<div class="v2cc-profile${ui.privacy ? ' is-private' : ''}" data-primary="${esc(p.primary)}">${head}${avaMenu}
+    return `<div class="v2cc-profile${ui.privacy ? ' is-private' : ''}" data-primary="${esc(p.primary)}">${cardHead}${avaMenu}
 <div class="v2cc-stats">${stats.map(s => `<span>${esc(s)}</span>`).join('')}</div>
 ${tagsHtml(p)}
 <div class="v2cc-actions">
