@@ -1244,3 +1244,26 @@ div.v2cc-rowitem { min-height: var(--v2cc-tap); padding: 4px 8px; border-radius:
 .v2cc-check.is-off { opacity: .3; }
 .v2cc-rrow.is-picked { outline: 1px solid var(--v2cc-accent); }
 .v2cc-rrow[disabled] { opacity: .55; }
+
+/* 角色资料卡：卡牌式头部（左竖图，右名字和数值） */
+.v2cc-cardhead { display: flex; gap: 10px; align-items: stretch; margin-bottom: 8px; }
+.v2cc .v2cc-cardpic { flex: 0 0 auto; width: 128px; height: 171px; padding: 0 !important; border-radius: 10px; overflow: hidden; border: 1px solid var(--v2cc-accent) !important; background: var(--v2cc-soft); }
+.v2cc-cardpic img { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
+.v2cc-cardpic-ph { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; font-size: 2.6em; opacity: .55; }
+.v2cc-cardinfo { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.v2cc-cardname { display: flex; align-items: flex-start; gap: 2px; cursor: pointer; }
+.v2cc-cardname > span { flex: 1 1 auto; min-width: 0; font-size: 1.3em; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.v2cc .v2cc-cardname .v2cc-pin { width: 32px; min-height: 32px; font-size: 1.25em; }
+.v2cc-cardsub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: .85em; opacity: .85; cursor: pointer; }
+.v2cc-cardline { font-size: .85em; opacity: .8; overflow-wrap: anywhere; }
+.v2cc-cardmeter { display: flex; align-items: center; gap: 6px; font-size: .85em; }
+.v2cc-cardmeter .v2cc-k { flex: 0 0 auto; opacity: .75; }
+.v2cc-cardmeter .v2cc-meter { flex: 1 1 auto; margin-top: 0; height: 5px; }
+.v2cc-cardmeter b { flex: 0 0 auto; min-width: 2ch; text-align: right; }
+.v2cc-cardmeter small.is-up { color: #6c6; }
+.v2cc-cardmeter small.is-down { color: #e77; }
+.v2cc-cardnav { margin-top: auto; display: flex; gap: 6px; }
+.v2cc-cardnav .v2cc-btn { flex: 1 1 0; min-width: 0; padding: 0 4px !important; white-space: nowrap; }
+@media (max-width: 380px) {
+    .v2cc .v2cc-cardpic { width: 108px; height: 144px; }
+}
