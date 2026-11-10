@@ -36,7 +36,7 @@ import { findActiveOriginal, importOriginalSettingsOnce, offerChatImport, import
 
 console.log("______________________记忆插件：开始加载______________________")
 
-const VERSION = '2.2.40-v2.40'
+const VERSION = '2.2.41-v2.41'
 // v2 的版本检查地址（v2 单独一个仓库，和原版的更新提示互不干扰）
 const V2_MANIFEST_URL = 'https://raw.githubusercontent.com/155210/st-memory-enhancement-v2/refs/heads/master/manifest.json'
 
@@ -459,12 +459,19 @@ export function parseTableEditTag(piece, mesIndex = -1, ignoreCheck = false) {
     // 获取上一个表格数据
     const { piece: prePiece } = mesIndex === -1 ? BASE.getLastSheetsPiece(1) : BASE.getLastSheetsPiece(mesIndex - 1, 1000, false)
     // 序号和发给 AI 的一致：归档表不发，也不算序号（这样它排在哪里都不影响别的表）
-    const sheets = BASE.hashSheetsToSheets(BASE.getPieceHash(prePiece)).filter(sheet => sheet.enable && !isArchiveSheet(sheet))
+    // 模板页里取消了「发送到上下文」的表也不发、不占序号，这里要和发送时一样跳过，不然 AI 写的序号会对到别的表上
+    const sheets = BASE.hashSheetsToSheets(BASE.getPieceHash(prePiece)).filter(sheet => sheet.enable && sheet.sendToContext !== false && !isArchiveSheet(sheet))
     console.log("执行指令时的信息", sheets)
     // 最新一层：程序管大总结时，不执行 AI 对大总结的增删和对事件历史的删除；重建老楼层照旧执行
     const live = mesIndex === -1
     for (const EditAction of sortActions(tableEditActions)) {
         executeAction(EditAction, sheets, { live })
+    }
+    // 这层重新生成（重 roll、改指令）时还留着上一次的快照：没发给 AI 的表（归档、停用的）也要回到上一层的样子，
+    // 不然大总结表退回去了、归档表没退，程序再压缩一次，归档里就多出一份重复的
+    if (piece[V2.pieceHash] && prePiece !== piece) {
+        const saved = new Set(sheets.map(sheet => sheet.uid))
+        Object.keys(piece[V2.pieceHash]).filter(uid => !saved.has(uid)).forEach(uid => delete piece[V2.pieceHash][uid])
     }
     sheets.forEach(sheet => sheet.save(piece, true))
     // 只存了发给 AI 的表；归档表、停用的表从上一层带过来，不然这层起就丢了
@@ -501,7 +508,7 @@ export function executeTableEditActions(matches, referencePiece) {
     console.log("解析到的表格编辑指令", tableEditActions)
 
     // 核心修复：不再信任传入的 referencePiece 上的快照，而是直接从 BASE 获取当前激活的、唯一的 Sheet 实例。
-    const sheets = BASE.getChatSheets().filter(sheet => sheet.enable && !isArchiveSheet(sheet))
+    const sheets = BASE.getChatSheets().filter(sheet => sheet.enable && sheet.sendToContext !== false && !isArchiveSheet(sheet))
     if (!sheets || sheets.length === 0) {
         console.error("executeTableEditActions: 未找到任何启用的表格实例，操作中止。");
         return false;
@@ -569,6 +576,8 @@ function executeAction(EditAction, sheets, options = {}) {
                 return reportRowIdentity(sheet, `updateRow 没写行号，已跳过：${JSON.stringify(action.data)}`)
             }
             if(rowIndex >= dataRowCount) return executeAction({...EditAction, type:'insert'}, sheets, options)
+            // 负数行号会写到表头上，跳过
+            if(rowIndex < 0) return reportRowIdentity(sheet, `updateRow 的行号 ${rowIndex} 不对，已跳过：${JSON.stringify(action.data)}`)
             writeRowValues(sheet, rowIndex, action.data, keyedByName)
             break
         }
@@ -942,6 +951,16 @@ function resolveTableMacros(text) {
             return `<span style="color: red">[GET: 处理时出错]</span>`;
         }
     });
+}
+
+/**
+ * 切换到另一个聊天时触发
+ * 表格实例按表格 uid 缓存，分支、存档点和原聊天的 uid 相同：不重建的话，会拿上一个聊天的格子去读写这个聊天，
+ * 这个聊天独有的格子读出来是「空数据」，再存一次就真的丢了
+ */
+async function onChatSwitched() {
+    DERIVED.any.chatSheetMap = {}
+    return onChatChanged()
 }
 
 /**
@@ -1529,7 +1548,7 @@ jQuery(async () => {
     // 监听主程序事件
     APP.eventSource.on(APP.event_types.CHARACTER_MESSAGE_RENDERED, onMessageReceived);
     APP.eventSource.on(APP.event_types.CHAT_COMPLETION_PROMPT_READY, onChatCompletionPromptReady);
-    APP.eventSource.on(APP.event_types.CHAT_CHANGED, onChatChanged);
+    APP.eventSource.on(APP.event_types.CHAT_CHANGED, onChatSwitched);
     APP.eventSource.on(APP.event_types.MESSAGE_EDITED, onMessageEdited);
     APP.eventSource.on(APP.event_types.MESSAGE_SWIPED, onMessageSwiped);
     APP.eventSource.on(APP.event_types.MESSAGE_DELETED, onChatChanged);

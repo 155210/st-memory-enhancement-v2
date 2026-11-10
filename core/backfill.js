@@ -1,6 +1,5 @@
 import { BASE, USER } from './manager.js';
 import { loadSheetsFilled } from './sheetRepair.js';
-import { V2 } from './v2keys.js';
 import { isArchiveSheet, runSummaryPipeline, summaryHooks } from './summaryManager.js';
 import { replaceUserTag } from '../utils/stringUtil.js';
 
@@ -33,7 +32,8 @@ const stripText = (mes) => String(mes || '')
  */
 /** 这层的 v2 快照里有没有数据行（每张表的第一行是表头） */
 export function snapshotHasRows(piece) {
-    const hash = piece?.[V2.pieceHash];
+    // 从原版导入的聊天，导入那层及更早的楼层读的是原版快照，也算已经有表格
+    const hash = BASE.getPieceHash(piece);
     return !!hash && Object.values(hash).some(rows => Array.isArray(rows) && rows.length > 1);
 }
 
@@ -43,7 +43,7 @@ export function planBackfill({ from = 0, to, batch } = {}) {
     let lastFilled = -1;
     let lastEmpty = -1;
     chat.forEach((m, i) => {
-        if (!m || m.is_user || !m[V2.pieceHash]) return;
+        if (!m || m.is_user || !BASE.getPieceHash(m)) return;
         if (snapshotHasRows(m)) lastFilled = i; else lastEmpty = i;
     });
     const start = Math.max(Number(from) || 0, lastFilled + 1);
@@ -86,11 +86,13 @@ export async function runBackfill(plan, applyEdits, { onProgress = () => {}, sho
         const from = batch.floors[0];
         const system = replaceUserTag(USER.tableBaseSetting.message_template.replace('{{tableData}}', tableText)) + BACKFILL_NOTE(from, batch.target);
         const user = batch.floors.map(i => `[第${i}层·${chat[i].is_user ? '用户' : 'AI'}]\n${stripText(chat[i].mes)}`).join('\n\n');
+        const target = chat[batch.target];
         const raw = await summaryHooks.ask(system, user, `回填第 ${from}–${batch.target} 层`);
+        // 等回复期间切到别的聊天了（酒馆换聊天用的是同一个数组，所以比消息对象）：停下，不把结果写进别的聊天
+        if ((USER.getContext().chat || [])[batch.target] !== target) { result.stopped = true; break; }
         // 等回复期间表格实例可能被换成别的楼层，重新载入
         const sheets = load();
         result.edits += applyEdits(raw, sheets.filter(sheet => sheet.enable && !isArchiveSheet(sheet)));
-        const target = chat[batch.target];
         sheets.forEach(sheet => sheet.save(target, true));
         source = target;
         try {

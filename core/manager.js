@@ -25,12 +25,19 @@ let pieceIndexCache = { chat: null, length: -1, map: new Map() }
 function getPieceIndex(piece) {
     const chat = APP.getContext().chat
     if (!chat) return -1
-    if (pieceIndexCache.chat !== chat || pieceIndexCache.length !== chat.length) {
+    const rebuild = () => {
         const map = new Map()
         chat.forEach((p, i) => map.set(p, i))
         pieceIndexCache = { chat, length: chat.length, map }
     }
-    return pieceIndexCache.map.get(piece) ?? -1
+    if (pieceIndexCache.chat !== chat || pieceIndexCache.length !== chat.length) rebuild()
+    let index = pieceIndexCache.map.get(piece)
+    // 酒馆切换聊天时用的是同一个数组：两个聊天（比如分支）楼层数一样时上面看不出变化，这里核对一下，对不上就重建
+    if (index === undefined || chat[index] !== piece) {
+        rebuild()
+        index = pieceIndexCache.map.get(piece)
+    }
+    return index ?? -1
 }
 
 export const APP = applicationFunctionManager

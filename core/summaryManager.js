@@ -241,6 +241,8 @@ export async function runSummaryPipeline(piece, floor, { sourcePiece = piece, co
         const count = Math.max(0, rows.length - config.eventKeep);
         return count >= 2 ? rows.slice(0, count) : [];
     };
+    // 等模型回复期间切到别的聊天了：这层消息已经不在当前聊天里，不能再往下写
+    const stillHere = () => (USER.getContext().chat || [])[floor] === piece;
     try {
         let t = load();
         if (!t.events || !t.summary) return [];
@@ -259,6 +261,7 @@ export async function runSummaryPipeline(piece, floor, { sourcePiece = piece, co
             const result = await cachedAsk(state, EVENT_SYSTEM, prompt, `写大总结（事件 ${picked.length} 条）`);
             const { summary: content, past } = parseSummaryOutput(result);
             if (!content) throw new Error('大总结为空');
+            if (!stillHere()) return log;
             t = load();
             if (eventText(t.events) === whole) {
                 const names = collectNames(t.sheets);
@@ -290,6 +293,7 @@ export async function runSummaryPipeline(piece, floor, { sourcePiece = piece, co
                     const result = await cachedAsk(state, COMPRESS_SYSTEM(LEVELS[level], LEVELS[level + 1]).replace('{n}', group.length), prompt, `压缩 ${group.length} 条${LEVELS[level]}总结成${LEVELS[level + 1]}`);
                     const { summary: content } = parseSummaryOutput(result);
                     if (!content) throw new Error(`${LEVELS[level + 1]}总结为空`);
+                    if (!stillHere()) return log;
                     t = load();
                     const now = pickGroup();
                     if (!now || JSON.stringify(now) !== JSON.stringify(group)) break;   // 等待期间表变了，下次再压
