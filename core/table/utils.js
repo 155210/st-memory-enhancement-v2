@@ -19,7 +19,8 @@ export function getColumnLetter(colIndex) {
     return letter;
 }
 
-export function filterSavingData(sheet, key=["uid", "name", "domain", "type", "enable", "required", "tochat", "triggerSend", "triggerSendDeep", "hashSheet", "cellHistory", "config"], withHead = false) {
+export function filterSavingData(sheet, key=["uid", "name", "domain", "type", "enable", "required", "tochat", "triggerSend", "triggerSendDeep", "sendToContext", "hashSheet", "cellHistory", "config"], withHead = false) {
+    // sendToContext（模板页的「发送到上下文」）也存下来：原来没存，刷新页面或换聊天后开关自己变回勾选
     const r = {}
     key.forEach(k => {
         if(k === 'cellHistory') {

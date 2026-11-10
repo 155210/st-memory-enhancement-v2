@@ -690,7 +690,8 @@ export function ext_getAllTables() {
     const allData = tables.map(table => {
         if (!table.enable) return null; // 跳过禁用的表格
         const header = table.getHeader();
-        const body = table.getBody();
+        // Sheet 没有 getBody，原来这里一调用就报错；数据行用 getContent()（不含表头和行号列）
+        const body = table.getContent();
         const fullData = [header, ...body];
 
         return {

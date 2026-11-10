@@ -238,7 +238,7 @@ export class SheetBase {
     }
 
     findCellByPosition(rowIndex, colIndex) {
-        if (rowIndex < 0 || colIndex < 0 || rowIndex >= this.hashSheet.length || colIndex >= this.hashSheet[0].length) {
+        if (!Number.isInteger(rowIndex) || !Number.isInteger(colIndex) || rowIndex < 0 || colIndex < 0 || rowIndex >= this.hashSheet.length || colIndex >= this.hashSheet[0].length) {
             console.warn('无效的行列索引');
             return null;
         }

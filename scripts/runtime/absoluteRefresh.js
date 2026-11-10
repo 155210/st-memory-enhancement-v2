@@ -1,6 +1,7 @@
 // absoluteRefresh.js
 import { BASE, DERIVED, EDITOR, SYSTEM, USER } from '../../core/manager.js';
 import {  convertOldTablesToNewSheets, executeTableEditActions, getTableEditTag } from "../../index.js";
+import { isArchiveSheet } from '../../core/summaryManager.js';
 import JSON5 from '../../utils/json5.min.mjs'
 import { updateSystemMessageTableStatus } from "../renderer/tablePushToChat.js";
 import { TableTwoStepSummary } from "./separateTableUpdate.js";
@@ -229,7 +230,8 @@ export async function rebuildTableActions(force = false, silentUpdate = USER.tab
         if (!piece) {
             throw new Error('findLastestTableData 未返回有效的表格数据');
         }
-        const latestTables = BASE.hashSheetsToSheets(BASE.getPieceHash(piece)).filter(sheet => sheet.enable);
+        // 归档表只存被压掉的原文，不拿去让 AI 整理：又长又费 token，还会被改写
+        const latestTables = BASE.hashSheetsToSheets(BASE.getPieceHash(piece)).filter(sheet => sheet.enable && !isArchiveSheet(sheet));
         DERIVED.any.waitingTable = latestTables;
         DERIVED.any.waitingTableIdMap = latestTables.map(table => table.uid);
 

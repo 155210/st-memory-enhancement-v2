@@ -78,44 +78,33 @@ async function clearTableStatisticsButton(statisticsContainer) {
     const chat = USER.getContext().chat;
     if (!chat || chat.length === 0) return;
 
-    const messageHashSheets = JSON.parse(JSON.stringify(USER.getContext().chat
-        .filter(message => BASE.getPieceHash(message))
-        .map(message => BASE.getPieceHash(message))));
-    let hashList = []
-    messageHashSheets.forEach(hashSheets => {
-        Object.entries(hashSheets).forEach(([sheetId, sheet]) => {
-            hashList = [...hashList, ...sheet.map(row => row.flat()).flat()]
-        })
+    // 还在用的格子：每层快照里的（含导入前楼层回读的原版快照）、「撤回大总结」留着的快照、表格当前结构里的
+    // 直接往 Set 里加：老聊天有上千层快照，原来每张表都把整个数组重新拼一遍，手机上会卡死
+    const used = new Set();
+    const addSnapshot = (hashSheets) => Object.values(hashSheets || {}).forEach(sheet => {
+        (Array.isArray(sheet) ? sheet : []).forEach(row => (Array.isArray(row) ? row : []).forEach(uid => used.add(uid)));
     });
-    const filterDuplicateMap = new Set(hashList);
-
+    chat.forEach(message => addSnapshot(BASE.getPieceHash(message)));
+    const meta = USER.getContext().chatMetadata || {};
+    for (const entry of meta[V2.summaryUndo] || []) [entry?.own, entry?.before, entry?.after].forEach(addSnapshot);
     const sheetsData = BASE.sheetsData.context;
-    const cellHistories = sheetsData.map(sheet => sheet.cellHistory);
-    let cellHistoryHashNum = 0;
-    let lastCellHistoryHashNum = 0;
-    cellHistories.forEach((cellHistory, index) => {
-        cellHistory.forEach((cell, cellIndex) => {
-            lastCellHistoryHashNum++
-            if (cell && cell.uid && filterDuplicateMap.has(cell.uid)) {
-                cellHistoryHashNum++;
-                delete cell.bridge;
-            } else {
-                cellHistories[index].splice(cellIndex, 1);
-            }
-        })
-    })
+    sheetsData.forEach(sheet => addSnapshot({ current: sheet.hashSheet }));
 
-    setTimeout(() => {
-        if (lastCellHistoryHashNum === cellHistoryHashNum) {
-            updataTableStatisticsData(statisticsContainer);
-            EDITOR.success(`清理历史单元格操作完成, 有效单元格数量: ${cellHistoryHashNum}`);
-            USER.saveChat()
-            return;
-        } else {
-            EDITOR.info(`本轮清理单元格数量: ${lastCellHistoryHashNum - cellHistoryHashNum}`);
-            clearTableStatisticsButton(statisticsContainer)
-        }
-    }, 0)
+    let total = 0;
+    let kept = 0;
+    sheetsData.forEach(sheet => {
+        if (!Array.isArray(sheet.cellHistory)) return;
+        total += sheet.cellHistory.length;
+        sheet.cellHistory = sheet.cellHistory.filter(cell => cell && cell.uid && used.has(cell.uid));
+        sheet.cellHistory.forEach(cell => { delete cell.bridge; });
+        kept += sheet.cellHistory.length;
+    });
+    // 表格实例里还留着清理前的格子，不重建的话下次保存又原样写回去，等于没清
+    DERIVED.any.chatSheetMap = {};
+    await USER.saveChat();
+    BASE.refreshContextView();
+    updataTableStatisticsData(statisticsContainer);
+    EDITOR.success(`清理历史单元格操作完成, 清理 ${total - kept} 个, 有效单元格数量: ${kept}`);
 }
 
 /**
