@@ -165,7 +165,7 @@ export const defaultSettings = await switchLanguage('__defaultSettings__', {
     v2_reminders: '',
     // v2：回填每批几条 AI 回复；表格配色
     v2_backfill_batch: 5,
-    v2_theme: 'follow',
+    v2_theme: 'blue',
     // v2：地图 off 关闭 / box 程序画框图 / ai AI 画示意图
     v2_map_mode: 'box',
     // v2：额外请求（大总结、地图、回填、融合）用哪个 API：'' 沿用「表格总结/整理」的「使用主API」，main 主API，custom 自定义API

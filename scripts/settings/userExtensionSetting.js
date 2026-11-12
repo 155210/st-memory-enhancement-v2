@@ -2,7 +2,7 @@ import { V2 } from '../../core/v2keys.js';
 import {BASE, DERIVED, EDITOR, SYSTEM, USER} from '../../core/manager.js';
 import { initPresetPanel, render as renderPresetPanel } from './v2PresetPanel.js';
 import { askExtra, stopCurrent } from '../../core/extraRequest.js';
-import { applyTheme } from '../../core/themes.js';
+import { applyTheme, normalizeTheme } from '../../core/themes.js';
 import {updateSystemMessageTableStatus, updateAlternateTable} from "../renderer/tablePushToChat.js";
 import {rebuildSheets , modifyRebuildTemplate, newRebuildTemplate, deleteRebuildTemplate, exportRebuildTemplate, importRebuildTemplate, triggerStepByStepNow} from "../runtime/absoluteRefresh.js";
 import {generateDeviceId} from "../../utils/utility.js";
@@ -796,7 +796,7 @@ export function renderSetting() {
     updateSwitch('#table_switch_debug_mode', USER.tableBaseSetting.tableDebugModeAble);
     updateSwitch('#table_read_switch', USER.tableBaseSetting.isAiReadTable);
     updateSwitch('#table_edit_switch', USER.tableBaseSetting.isAiWriteTable);
-    $('#table_v2_theme').val(USER.tableBaseSetting.v2_theme || 'follow');
+    $('#table_v2_theme').val(normalizeTheme(USER.tableBaseSetting.v2_theme));
     $('#table_v2_map_mode').val(USER.tableBaseSetting.v2_map_mode || 'box');
     $('#table_v2_extra_api').val(USER.tableBaseSetting.v2_extra_api || '');
     updateSwitch('#table_v2_request_panel_switch', USER.tableBaseSetting.v2_request_panel !== false);
