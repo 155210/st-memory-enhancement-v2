@@ -804,10 +804,52 @@ td.selected {
 
 
 /* ---------- v2：表格配色（U4） ---------- */
-body.v2-theme-paper { --v2t-bg: #f4ecd8; --v2t-cell: #fbf6ea; --v2t-head: #e6d6b3; --v2t-border: #b89f74; --v2t-text: #3b2f20; --v2t-accent: #9a5b2c; }
-body.v2-theme-night { --v2t-bg: #141a26; --v2t-cell: #1b2333; --v2t-head: #25314a; --v2t-border: #3d4c6b; --v2t-text: #d9e1f2; --v2t-accent: #7aa2f7; }
-body.v2-theme-mint { --v2t-bg: #e8f5f1; --v2t-cell: #f5fbf9; --v2t-head: #c9e8de; --v2t-border: #7fb8a6; --v2t-text: #1f3b33; --v2t-accent: #1f8a70; }
-body.v2-theme-contrast { --v2t-bg: #000; --v2t-cell: #000; --v2t-head: #222; --v2t-border: #fff; --v2t-text: #fff; --v2t-accent: #ffd400; }
+body[class*="v2-theme-"] { --v2t-bg: #121419; --v2t-cell: #1a1d24; --v2t-head: #232730; --v2t-border: #2e333e; --v2t-text: #ecebe6; --v2t-mute: #a0a6b2; --v2t-accent: #7aa7f7; }
+body.v2-theme-blue { --v2t-accent: #7aa7f7; }
+body.v2-theme-teal { --v2t-accent: #4fd1b5; }
+body.v2-theme-violet { --v2t-accent: #b39df3; }
+body.v2-theme-rose { --v2t-accent: #f08ba6; }
+body.v2-theme-mono { --v2t-accent: #e6e6e6; }
+
+/* 抽屉里凡是用酒馆主题色的地方（图标、按钮、输入框、表格里的字）都改用这套配色：
+   直接把酒馆的颜色变量在抽屉范围内换掉，里面的东西不用一个个改 */
+body[class*="v2-theme-"] #table_drawer_content {
+    --SmartThemeBodyColor: var(--v2t-text);
+    --SmartThemeEmColor: var(--v2t-mute);
+    --SmartThemeQuoteColor: var(--v2t-accent);
+    --SmartThemeUnderlineColor: var(--v2t-accent);
+    --SmartThemeBorderColor: var(--v2t-border);
+    --SmartThemeBlurTintColor: var(--v2t-bg);
+    --SmartThemeChatTintColor: var(--v2t-bg);
+    --SmartThemeBotMesBlurTintColor: var(--v2t-cell);
+    --SmartThemeUserMesBlurTintColor: var(--v2t-head);
+    --SmartThemeShadowColor: transparent;
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+body[class*="v2-theme-"] #table_drawer_content .menu_button,
+body[class*="v2-theme-"] #table_drawer_content .text_pole,
+body[class*="v2-theme-"] #table_drawer_content select,
+body[class*="v2-theme-"] #table_drawer_content textarea,
+body[class*="v2-theme-"] #table_drawer_content input[type="text"],
+body[class*="v2-theme-"] #table_drawer_content input[type="number"] {
+    background-color: var(--v2t-head);
+    color: var(--v2t-text);
+    border-color: var(--v2t-border);
+}
+body[class*="v2-theme-"] #table_drawer_content input[type="checkbox"] { accent-color: var(--v2t-accent); }
+body[class*="v2-theme-"] #table_drawer_content input[type="checkbox"]:checked { background-color: var(--v2t-accent); border-color: var(--v2t-accent); }
+body[class*="v2-theme-"] #table_drawer_content a { color: var(--v2t-accent); }
+body[class*="v2-theme-"] #table_drawer_content .v2h-btn > i,
+body[class*="v2-theme-"] #table_drawer_content .v2s-title > i:first-child,
+body[class*="v2-theme-"] #table_drawer_content .v2h-link > i,
+body[class*="v2-theme-"] #table_drawer_content .v2u-btn > i,
+body[class*="v2-theme-"] #table_drawer_content .menu_button > i,
+body[class*="v2-theme-"] #table_drawer_content .menu_button.fa-solid,
+body[class*="v2-theme-"] #table_drawer_content .inline-drawer-icon { color: var(--v2t-accent); }
+body[class*="v2-theme-"] #table_drawer_content .v2h-step { background: var(--v2t-accent); color: var(--v2t-bg); }
+body[class*="v2-theme-"] #table_drawer_content .v2h-group.is-steps .v2h-btn { border-left-color: var(--v2t-accent); }
+/* 聊天底部的角色资料卡：强调色跟着配色走，底色仍用酒馆的 */
+body[class*="v2-theme-"] .v2cc { --v2cc-accent: var(--v2t-accent); }
 
 body[class*="v2-theme-"] #table_drawer_content,
 body[class*="v2-theme-"] #app_header_table_container {
@@ -1274,7 +1316,7 @@ div.v2cc-rowitem { min-height: var(--v2cc-tap); padding: 4px 8px; border-radius:
    ================================================================ */
 #table_drawer_content .v2u {
     --u-fg: var(--v2t-text, var(--SmartThemeBodyColor, #ecebe6));
-    --u-ac: var(--v2t-accent, var(--SmartThemeQuoteColor, #f2a541));
+    --u-ac: var(--v2t-accent, #7aa7f7);
     --u-solid: var(--v2t-bg, var(--SmartThemeBlurTintColor, #1a1d24));
     --u-mu: color-mix(in srgb, var(--u-fg) 66%, transparent);
     --u-s1: color-mix(in srgb, var(--u-fg) 5%, transparent);

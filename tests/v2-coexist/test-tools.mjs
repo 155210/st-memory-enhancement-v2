@@ -162,8 +162,11 @@ console.log('✓ 关系图：角色关系表的角色之间关系');
 const { applyTheme } = await import(REPO + '/core/themes.js');
 const classes = new Set();
 globalThis.document = { body: { classList: { add: c => classes.add(c), remove: c => classes.delete(c) } } };
-applyTheme('night'); assert.deepEqual([...classes], ['v2-theme-night']);
-applyTheme('follow'); assert.deepEqual([...classes], []);
+applyTheme('teal'); assert.deepEqual([...classes], ['v2-theme-teal']);
+applyTheme('rose'); assert.deepEqual([...classes], ['v2-theme-rose']);
+// 旧版存的配色名（跟随酒馆、暖色纸张……）已经没有了，一律按默认的雾蓝显示
+applyTheme('follow'); assert.deepEqual([...classes], ['v2-theme-blue']);
+applyTheme('paper'); assert.deepEqual([...classes], ['v2-theme-blue']);
 console.log('✓ 配色切换');
 
 // 聊天文件大小拆分：正文、重 roll、思考、其他字段；表格快照不算进去
