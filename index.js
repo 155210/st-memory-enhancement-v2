@@ -21,7 +21,8 @@ import { ext_getAllTables, ext_exportAllTablesAsJson } from './scripts/settings/
 import { openTableDebugLogPopup } from "./scripts/settings/devConsole.js";
 import { TableTwoStepSummary } from "./scripts/runtime/separateTableUpdate.js";
 import { initTest } from "./components/_fotTest.js";
-import { initAppHeaderTableDrawer, openAppHeaderTableDrawer } from "./scripts/renderer/appHeaderTableBaseDrawer.js";
+import { initAppHeaderTableDrawer, openAppHeaderTableDrawer, refreshDrawerHome } from "./scripts/renderer/appHeaderTableBaseDrawer.js";
+import { openInjectionPreview } from "./scripts/renderer/drawerHome.js";
 import { initRefreshTypeSelector } from './scripts/runtime/absoluteRefresh.js';
 import {refreshTempView, updateTableContainerPosition} from "./scripts/editor/tableTemplateEditView.js";
 import { functionToBeRegistered } from "./services/debugs.js";
@@ -36,7 +37,7 @@ import { findActiveOriginal, importOriginalSettingsOnce, offerChatImport, import
 
 console.log("______________________记忆插件：开始加载______________________")
 
-const VERSION = '2.2.41-v2.41'
+const VERSION = '2.2.42-v2.42'
 // v2 的版本检查地址（v2 单独一个仓库，和原版的更新提示互不干扰）
 const V2_MANIFEST_URL = 'https://raw.githubusercontent.com/155210/st-memory-enhancement-v2/refs/heads/master/manifest.json'
 
@@ -1064,6 +1065,8 @@ export async function updateSheetsView(mesId) {
         updateSystemMessageTableStatus();
         // 角色资料卡跟着表格刷新
         refreshCharacterCard();
+        // 抽屉开着时，总览 / 角色页也跟着刷新
+        refreshDrawerHome();
     }catch (error) {
         EDITOR.error("记忆插件：更新表格视图失败\n原因：", error.message, error)
     }
@@ -1505,24 +1508,9 @@ jQuery(async () => {
         }
     })
 
-    // I5：本轮注入预览
-    $(document).on('click', '#table_v2_injection_preview_button', async function () {
-        if (!lastInjection()?.text) {
-            try { if (!USER.tableBaseSetting.step_by_step) initTableData() } catch (error) { console.warn('预览生成失败', error) }
-        }
-        const entry = lastInjection()
-        if (!entry) return EDITOR.error('还没有发送过表格，先聊一轮或打开有表格的聊天')
-        const esc = (text) => String(text ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])
-        const rows = (entry.sheets || []).map(x => `<tr><td>${esc(x.name)}</td><td>${x.rows}</td><td>${x.tiers ? `完整 ${x.tiers.full} / 简要 ${x.tiers.brief} / 名册 ${x.tiers.roster}` : '整表'}</td><td>${x.chars}</td></tr>`).join('')
-        const html = `<div style="text-align:left">
-            <p>时间：${esc(entry.at)}，第 ${entry.turn} 轮${entry.pure ? '（分步填表，只发数据）' : ''}</p>
-            <p>注入总字数：<b>${entry.totalChars ?? entry.tableChars ?? 0}</b>（表格部分 ${entry.tableChars ?? 0}，找回旧事 ${entry.recallChars ?? 0}）</p>
-            ${entry.present ? `<p>在场：${esc(entry.present.join('、') || '无')}<br>主要角色：${esc(entry.main.join('、') || '无')}</p>` : ''}
-            ${rows ? `<table style="width:100%;border-collapse:collapse" border="1"><tr><th>表</th><th>行数</th><th>发送方式</th><th>字数</th></tr>${rows}</table>` : ''}
-            ${entry.reminders ? `<p>定时提醒：</p><pre style="white-space:pre-wrap">${esc(entry.reminders)}</pre>` : ''}
-            <details><summary>完整内容</summary><pre style="white-space:pre-wrap;max-height:50vh;overflow:auto">${esc(entry.text || '')}</pre></details>
-        </div>`
-        await EDITOR.callGenericPopup(html, EDITOR.POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true })
+    // I5：本轮注入预览（底部弹层，画在 drawerHome.js 里）
+    $(document).on('click', '#table_v2_injection_preview_button', function () {
+        EDITOR.tryBlock(openInjectionPreview, '打开注入预览失败')
     })
     // 点击打开查看表格日志按钮
     $(document).on('click', '#table_debug_log_button', function () {

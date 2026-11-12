@@ -1,92 +1,45 @@
-<!-- manager.html -->
-<div class="wide100p padding5 dataBankAttachments" id="table_manager_container">
-    <!--    <h2 class="marginBot5">-->
-    <!--        <span>-->
-    <!--            数据表-->
-    <!--        </span>-->
-    <!--    </h2>-->
-    <small data-i18n="managerDescription">
-        这是用于储存数据的表格。正常进行对话即可，默认无需进行任何操作即可自动更新表格。下方的"表格整理"仅为辅助手段，常规无需使用。
-    </small>
-    <div id="tableEditTips"></div>
-    <hr />
-    <div style=" display: flex; justify-content: space-between; flex-wrap: wrap; ">
-        <div style=" display: flex; justify-content: flex-start; flex-wrap: wrap; width: fit-content; gap: 4px;">
-            <!--            <div style="display: flex; justify-content: center;">-->
-            <!--                <select id="table_refresh_type_selector" class="text_pole" style="height: 30px; width: 200px;">-->
-            <!--                    <option value="">~~~看到这个选项说明出问题了~~~~</option>-->
-            <!--                </select>-->
-            <!--            </div>-->
-            <!--            <div style="display: flex; justify-content: center;" id="table_edit_mode_button">-->
-            <!--                <i class="menu_button menu_button_icon fa-solid fa-pen" style="height: 30px; width: 30px" title="批量编辑"></i>-->
-            <!--            </div>-->
-            <div style="display: flex; justify-content: center" id="table_data_statistics_button" title="查看表格数据统计"
-                data-i18n="[title]View table data statistics">
-                <i class="menu_button menu_button_icon fa-solid fa-ranking-star" style="height: 30px; width: 30px"></i>
-            </div>
-            <div style="display: flex; justify-content: center" id="dataTable_history_button" title="查看表格编辑历史记录"
-                data-i18n="[title]View table edit history">
-                <i class="menu_button menu_button_icon fa-solid fa-history" style="height: 30px; width: 30px"></i>
-            </div>
-            <div style="display: flex; justify-content: center" id="table_undo" title="恢复表格"
-                data-i18n="[title]Completely rebuild table">
-                <i class="menu_button menu_button_icon fa-solid fa-undo" style="height: 30px; width: 30px"></i>
-            </div>
-            <div style="display: flex; justify-content: center" id="table_rebuild_button" title="表格总结"
-                data-i18n="[title]Completely rebuild table">
-                <i class="menu_button menu_button_icon fa-solid fa-repeat">表格整理</i>
-            </div>
-            <div style="display: flex; justify-content: center" id="table_directory_button" title="表格目录">
-                <i class="menu_button menu_button_icon fa-solid fa-list" style="height: 30px; min-width: 30px">表格目录</i>
-            </div>
-
-            <!--            <div style="display: flex; justify-content: center;" id="paste_table_button">-->
-            <!--                <i class="menu_button menu_button_icon fa-solid fa-paste" style="height: 30px; width: 30px" title="粘贴表格"></i>-->
-            <!--            </div>-->
-            <!-- <div style="display: flex; justify-content: center;" id="table_clear_up_button">
-                <i class="menu_button menu_button_icon fa-solid fa-broom" style="height: 30px; width: 30px" title="整理表格（可以从插件界面更改设置）"></i>
-            </div> -->
+<!-- manager.html：表格页（v2 新排版：一次看一张表） -->
+<div class="v2u-data" id="table_manager_container">
+    <div id="tableEditTips" style="display:none"></div>
+    <!-- 楼层 -->
+    <div class="v2u-floor">
+        <div class="v2u-stepper">
+            <button type="button" id="table_prev_button" class="v2u-icon-btn" title="上一个有表格的楼层" aria-label="上一个有表格的楼层"><i class="fa-solid fa-chevron-left"></i></button>
+            <span id="table_indicator">最新</span>
+            <button type="button" id="table_next_button" class="v2u-icon-btn" title="下一个有表格的楼层" aria-label="下一个有表格的楼层"><i class="fa-solid fa-chevron-right"></i></button>
         </div>
-        <div style=" display: flex; justify-content: flex-end; flex-wrap: wrap; width: fit-content; gap: 4px;">
-            <div style="display: flex; justify-content: center" id="copy_table_button">
-                <i class="menu_button menu_button_icon fa-solid fa-copy" style="height: 30px; width: 30px" title="复制表格"
-                    data-i18n="[title]Copy table"></i>
-            </div>
-            <div style="display: flex; justify-content: center" id="import_table_button">
-                <i class="menu_button menu_button_icon fa-solid fa-file-import" style="height: 30px; width: 30px"
-                    title="导入表格" data-i18n="[title]Import table"></i>
-            </div>
-            <div style="display: flex; justify-content: center" id="export_table_button">
-                <i class="menu_button menu_button_icon fa-solid fa-file-export" style="height: 30px; width: 30px"
-                    title="导出表格" data-i18n="[title]Export table"></i>
-            </div>
-            <div style="display: flex; justify-content: center" id="clear_table_button">
-                <i class="menu_button menu_button_icon fa-solid fa-trash-can redWarningBG"
-                    style="height: 30px; width: 30px" title="清空表格" data-i18n="[title]Clear table"></i>
-            </div>
+        <input type="number" id="table_jump_input" placeholder="楼层" class="v2u-input" inputmode="numeric" aria-label="跳到第几楼">
+        <button type="button" id="table_jump_button" class="v2u-btn">跳转</button>
+        <button type="button" id="table_latest_button" class="v2u-btn" style="display:none">回到最新</button>
+    </div>
+    <div id="v2u_old_floor_tip" class="v2u-tip" style="display:none"></div>
+    <!-- 选哪张表 -->
+    <div id="v2u_sheet_chips" class="v2u-chips"></div>
+    <!-- 这张表的工具 -->
+    <div class="v2u-tools">
+        <label class="v2u-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" id="v2u_sheet_search" placeholder="搜这张表" autocomplete="off"></label>
+        <button type="button" id="v2u_add_row" class="v2u-btn"><i class="fa-solid fa-plus"></i><span>加一行</span></button>
+        <button type="button" id="v2u_more_button" class="v2u-icon-btn" aria-label="更多操作" title="更多操作"><i class="fa-solid fa-ellipsis"></i></button>
+    </div>
+    <!-- 更多操作：原来那排没字的图标，现在都带字 -->
+    <div id="v2u_more_panel" class="v2u-more-panel" style="display:none">
+        <button type="button" class="v2u-btn" id="table_data_statistics_button"><i class="fa-solid fa-ranking-star"></i><span>数据统计</span></button>
+        <button type="button" class="v2u-btn" id="dataTable_history_button"><i class="fa-solid fa-clock-rotate-left"></i><span>编辑历史</span></button>
+        <button type="button" class="v2u-btn" id="table_undo"><i class="fa-solid fa-rotate-left"></i><span>撤销本轮修改</span></button>
+        <button type="button" class="v2u-btn" id="table_rebuild_button"><i class="fa-solid fa-repeat"></i><span>表格整理</span></button>
+        <button type="button" class="v2u-btn" id="copy_table_button"><i class="fa-solid fa-copy"></i><span>复制表格</span></button>
+        <button type="button" class="v2u-btn" id="import_table_button"><i class="fa-solid fa-file-import"></i><span>导入表格</span></button>
+        <button type="button" class="v2u-btn" id="export_table_button"><i class="fa-solid fa-file-export"></i><span>导出表格</span></button>
+        <button type="button" class="v2u-btn is-danger" id="clear_table_button"><i class="fa-solid fa-trash-can"></i><span>清空表格</span></button>
+    </div>
+    <div class="v2u-subbar">
+        <span id="v2u_sheet_info"></span>
+        <div class="v2u-seg" id="v2u_view_switch" role="group" aria-label="显示方式">
+            <button type="button" data-view="card">卡片</button>
+            <button type="button" data-view="wide">表格</button>
         </div>
     </div>
-    <hr />
-    <div style="display: flex; align-items: center;">
-        <div style="display: flex; align-items: center; gap: 5px">
-            <div id="table_prev_button" title="前表">
-                <i class="menu_button menu_button_icon fa-solid">&lt; 前表</i>
-            </div>
-            <input type="number" id="table_jump_input" placeholder="层数" class="text_pole" style="width: 60px; margin: 0px 0px; padding: 2px 5px; box-sizing: border-box; text-align: center;">
-            <div id="table_jump_button" title="跳转">
-                <i class="menu_button menu_button_icon fa-solid">跳转</i>
-            </div>
-            <div id="table_next_button" title="后表">
-                <i class="menu_button menu_button_icon fa-solid">后表 &gt;</i>
-            </div>
-        </div>
-        <div id="table_indicator" style="flex: 1; text-align: center;">
-            现在是最新表格
-        </div>
-    </div>
-    <hr />
     <div id="contentContainer">
-        <div id="tableContainer">
-        </div>
+        <div id="tableContainer"></div>
     </div>
 </div>
