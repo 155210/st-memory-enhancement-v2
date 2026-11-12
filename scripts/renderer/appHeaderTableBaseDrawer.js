@@ -1,47 +1,59 @@
 import {DERIVED, EDITOR, SYSTEM, USER} from "../../core/manager.js";
 import {getChatSheetsView} from "../editor/chatSheetsDataView.js";
 import {getEditView, updateTableContainerPosition} from "../editor/tableTemplateEditView.js";
+import {renderOverview, renderRoster} from "./drawerHome.js";
+import {enhanceSettings} from "../settings/settingsLayout.js";
 
-// 全局变量定义 (保持不变)
 let tableDrawer = null;
 let tableDrawerIcon = null;
 let tableDrawerContent = null;
 let appHeaderTableContainer = null;
-let databaseButton = null;
-let editorButton = null;
-let settingButton = null;
 let inlineDrawerHeaderContent = null;
-let tableDrawerContentHeader = null;
 
 let tableViewDom = null;
 let tableEditDom = null;
 let settingContainer = null;
 
-// 新增：缓存内容容器的 jQuery 对象
-let databaseContentDiv = null;
-let editorContentDiv = null;
-let settingContentDiv = null;
-
-const timeOut = 200;
-const easing = 'easeInOutCubic';
+/** 五个页面：按钮 id → 内容容器 */
+const pages = {};
+const TAB_KEY = 'v2u_tab';
 
 let isEventListenersBound = false;
-let currentActiveButton = null; // Track currently active button
+let currentTab = null;
 
-/**
- * 更新按钮选中状态 (保持不变)
- * @param {jQuery} selectedButton 当前选中的按钮
- */
-function updateButtonStates(selectedButton) {
-    if (currentActiveButton && currentActiveButton.is(selectedButton)) {
-        return false;
+/** 需要每次切过去都重画的页面 */
+function refreshPage(name) {
+    try {
+        if (name === 'overview') renderOverview(pages.overview.content[0]);
+        if (name === 'roles') renderRoster(pages.roles.content[0]);
+    } catch (error) {
+        console.warn('[记忆增强 v2] 页面刷新失败', name, error);
     }
-    databaseButton.css('opacity', '0.5');
-    editorButton.css('opacity', '0.5');
-    settingButton.css('opacity', '0.5');
-    selectedButton.css('opacity', '1');
-    currentActiveButton = selectedButton;
+}
+
+/** 切到某个页面；已经在这一页时只刷新 */
+export function switchDrawerTab(name) {
+    const page = pages[name];
+    if (!page) return false;
+    if (currentTab !== name) {
+        Object.entries(pages).forEach(([key, p]) => {
+            p.button.toggleClass('is-on', key === name);
+            p.content.css('display', key === name ? '' : 'none');
+        });
+        currentTab = name;
+        try { localStorage.setItem(TAB_KEY, name); } catch (_) { }
+        const scroller = appHeaderTableContainer?.[0];
+        if (scroller) scroller.scrollTop = 0;
+    }
+    refreshPage(name);
     return true;
+}
+
+/** 抽屉打开着时，刷新当前页（表格变了之后调用） */
+export function refreshDrawerHome() {
+    if (!isEventListenersBound || !currentTab) return;
+    if (!tableDrawerContent?.hasClass('openDrawer')) return;
+    refreshPage(currentTab);
 }
 
 /**
@@ -52,22 +64,15 @@ export async function initAppHeaderTableDrawer() {
         return;
     }
 
-    // DOM 元素选择 (只执行一次)
     tableDrawer = $('#table_database_settings_drawer');
     tableDrawerIcon = $('#table_drawer_icon');
     tableDrawerContent = $('#table_drawer_content');
     appHeaderTableContainer = $('#app_header_table_container');
-    databaseButton = $('#database_button');
-    editorButton = $('#editor_button');
-    settingButton = $('#setting_button');
     inlineDrawerHeaderContent = $('#inline_drawer_header_content');
-    tableDrawerContentHeader = $('#table_drawer_content_header');
 
-    // DOM 修改 (只执行一次)
     $('.fa-panorama').removeClass('fa-panorama').addClass('fa-image');
     $('.fa-user-cog').removeClass('fa-user-cog').addClass('fa-user');
 
-    // 异步获取内容 (只执行一次)
     if (tableViewDom === null) {
         tableViewDom = await getChatSheetsView(-1);
     }
@@ -76,49 +81,38 @@ export async function initAppHeaderTableDrawer() {
         tableEditDom.append(await getEditView(-1));
     }
     if (settingContainer === null) {
-        const header = $(`<div></div>`).append($(`<div style="margin: 10px 0;"></div>`).append(inlineDrawerHeaderContent));
+        const header = $(`<div></div>`).append($(`<div class="v2u-setting-head"></div>`).append(inlineDrawerHeaderContent));
         settingContainer = header.append($('.memory_enhancement_container').find('#memory_enhancement_settings_inline_drawer_content'));
     }
 
-    // 创建容器 div 并将内容包裹起来 (只执行一次)
-    // **** 修改点：创建时就缓存 jQuery 对象 ****
-    databaseContentDiv = $(`<div id="database-content" style="width: 100%; height: 100%; overflow: hidden;"></div>`).append(tableViewDom);
-    editorContentDiv = $(`<div id="editor-content" style="width: 100%; height: 100%; display: none; overflow: hidden;"></div>`).append(tableEditDom);
-    settingContentDiv = $(`<div id="setting-content" style="width: 100%; height: 100%; display: none; overflow: hidden;"></div>`).append(settingContainer);
+    const make = (id, cls = '') => $(`<div id="${id}" class="v2u-page ${cls}" style="display: none;"></div>`);
+    pages.overview = { button: $('#overview_button'), content: make('overview-content') };
+    pages.database = { button: $('#database_button'), content: make('database-content').append(tableViewDom) };
+    pages.roles = { button: $('#roles_button'), content: make('roles-content') };
+    pages.editor = { button: $('#editor_button'), content: make('editor-content').append(tableEditDom) };
+    pages.setting = { button: $('#setting_button'), content: make('setting-content').append(settingContainer) };
+    Object.values(pages).forEach(p => appHeaderTableContainer.append(p.content));
 
-    // 将所有内容容器添加到 appHeaderTableContainer 中 (只执行一次)
-    appHeaderTableContainer.append(databaseContentDiv);
-    appHeaderTableContainer.append(editorContentDiv);
-    appHeaderTableContainer.append(settingContentDiv);
-
-    // 初始化按钮状态 (只执行一次)
-    updateButtonStates(databaseButton);
+    try { enhanceSettings(settingContainer[0]); } catch (error) { console.warn('[记忆增强 v2] 设置页分组失败，按原样显示', error); }
 
     $('#tableUpdateTag').click(function() {
         $('#extensions_details').trigger('click');
     });
 
-    // **** 修改点：按钮点击事件调用新的 switchContent 函数 ****
-    databaseButton.on('click', function() {
-        if (updateButtonStates(databaseButton)) {
-            switchContent(databaseContentDiv); // 传入缓存的 jQuery 对象
-        }
+    Object.entries(pages).forEach(([name, p]) => {
+        p.button.on('click', () => switchDrawerTab(name));
     });
 
-    editorButton.on('click', function() {
-        if (updateButtonStates(editorButton)) {
-            switchContent(editorContentDiv); // 传入缓存的 jQuery 对象
-            // updateTableContainerPosition();
-        }
-    });
-
-    settingButton.on('click', function() {
-        if (updateButtonStates(settingButton)) {
-            switchContent(settingContentDiv); // 传入缓存的 jQuery 对象
-        }
+    // 每次点开抽屉，把当前页刷新一下（总览、角色的数据是跟着聊天变的）
+    $('#table_database_settings_drawer .drawer-toggle').on('click', () => {
+        setTimeout(() => { if (tableDrawerContent.hasClass('openDrawer')) refreshPage(currentTab); }, 350);
     });
 
     isEventListenersBound = true;
+
+    let first = 'overview';
+    try { const saved = localStorage.getItem(TAB_KEY); if (saved && pages[saved]) first = saved; } catch (_) { }
+    switchDrawerTab(first);
 
     // 移除旧版本元素 (只执行一次)
     $('.memory_enhancement_container').remove();
@@ -132,7 +126,6 @@ export async function openAppHeaderTableDrawer(target = undefined) {
         await initAppHeaderTableDrawer();
     }
 
-    // 如果目标是设置按钮，则直接打开设置抽屉
     if (tableDrawerIcon.hasClass('closedIcon')) {
         // 关闭其他抽屉
         $('.openDrawer').not('#table_drawer_content').not('.pinnedOpen').addClass('resizing').each((_, el) => {
@@ -159,16 +152,7 @@ export async function openAppHeaderTableDrawer(target = undefined) {
             });
         });
 
-        if (target) {
-            // 如果目标是设置按钮，则直接打开设置抽屉
-            if (target === 'database') {
-                databaseButton.trigger('click');
-            } else if (target === 'setting') {
-                settingButton.trigger('click');
-            } else if (target === 'editor') {
-                editorButton.trigger('click');
-            }
-        }
+        if (target && pages[target]) switchDrawerTab(target);
     } else {
         // 关闭当前抽屉
         tableDrawerIcon.toggleClass('openIcon closedIcon');
@@ -183,41 +167,4 @@ export async function openAppHeaderTableDrawer(target = undefined) {
             });
         });
     }
-}
-
-/**
- * **** 新增：通用的内容切换函数 ****
- * @param {jQuery} targetContent 要显示的目标内容的 jQuery 对象
- */
-async function switchContent(targetContent) {
-    // **** 修改点：直接使用 :visible 伪类，或者维护一个变量记录当前显示的元素 ****
-    // 使用 :visible 仍然需要查询，但比查找所有子元素再过滤要好一点
-    // 或者，可以引入一个变量来跟踪当前显示的div，避免DOM查询
-    const currentContent = appHeaderTableContainer.children(':visible');
-
-    // 如果目标内容就是当前内容，则不执行操作 (理论上 updateButtonStates 已经处理了，但加一层保险)
-    if (currentContent.is(targetContent)) {
-        return;
-    }
-
-    // 停止当前正在进行的动画 (以防用户快速点击)
-    currentContent.stop(true, false); // 清除动画队列，不跳转到动画末尾
-    targetContent.stop(true, false);  // 清除动画队列，不跳转到动画末尾
-
-    if (currentContent.length > 0) {
-        // **** 修改点：简化动画链，移除 .delay().hide(0) ****
-        // slideUp 会在动画结束后自动设置 display: none
-        currentContent.slideUp({
-            duration: timeOut,
-            easing: easing,
-            // queue: false // 如果希望动画不排队，可以考虑，但可能导致视觉效果重叠
-        });
-    }
-
-    // 使用 slideDown 显示目标内容
-    targetContent.slideDown({
-        duration: timeOut,
-        easing: easing,
-        // queue: false
-    });
 }

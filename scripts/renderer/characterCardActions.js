@@ -390,25 +390,13 @@ export async function jumpToSheet(sheetName) {
             await openDrawer();
         }
         $('#database_button').trigger('click');
-        const findTitle = () => {
-            if (uid) {
-                const byUid = document.querySelector(`[data-table-directory-sheet-title="${CSS?.escape ? CSS.escape(uid) : uid}"]`);
-                if (byUid) return byUid;
-            }
-            return [...document.querySelectorAll('.table-directory-sheet-title')].find(el => {
-                const text = el.textContent.replace(/^[▸▾]\s*/, '').replace(/^#\d+\s*/, '').replace(/（\d+ 行，点开）$/, '');
-                return text === sheetName;
-            }) || null;
-        };
-        let title = null;
-        for (let i = 0; i < 30 && !title; i++) {
-            title = findTitle();
-            if (!title) await wait(100);
+        const { selectSheet } = await import('../editor/chatSheetsDataView.js');
+        let found = false;
+        for (let i = 0; i < 30 && !found; i++) {
+            found = await selectSheet(uid || sheetName) || await selectSheet(sheetName);
+            if (!found) await wait(100);
         }
-        if (!title) return EDITOR.info(`打开了表格，没找到「${sheetName}」，请手动翻一下`);
-        const container = title.nextElementSibling;
-        if (container && container.style.display === 'none') title.click();
-        title.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (!found) return EDITOR.info(`打开了表格，没找到「${sheetName}」，请手动翻一下`);
     } catch (error) {
         console.warn('[记忆增强 v2] 跳到原表失败', error);
         EDITOR.info('打不开表格抽屉，请手动打开');

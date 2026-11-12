@@ -3,31 +3,21 @@
         <div id="table_drawer_icon" class="drawer-icon fa-solid fa-bars-progress fa-fw closedIcon interactable" title="增强记忆表格" data-i18n="[title]Event table" tabindex="0"></div>
     </div>
     <div id="table_drawer_content" class="drawer-content closedDrawer">
-        <!-- 切换界面按钮 -->
-        <div id="table_button_container" class="wide100p flex-container" style="display: flex; flex-grow: 1; justify-content: space-between">
-            <div style="display: flex; flex-grow: 1; gap: 5px;">
-                <button id="database_button" class="menu_button_icon menu_button interactable"><i class="fa-solid fa-database"></i><b data-i18n="Data">数据</b></button>
-                <button id="editor_button" class="menu_button_icon menu_button interactable"><i class="fa-solid fa-pen-ruler"></i><b data-i18n="Template">模板</b></button>
-                <!--                <button id="nodes_button" class="menu_button_icon menu_button interactable"><i class="fa-brands fa-hubspot"></i><b>流程</b></button>-->
-            </div>
-            <button id="setting_button" class="menu_button_icon menu_button interactable" style="position: relative;">
-                <i class="fa-solid fa-gears"></i>
-                <b data-i18n="Settings">设置</b>
-                <span id="setting_button_new_tag" class="new-version-tag" style="display: none; position: absolute; top: -5px; right: -5px; background: #ff4444; color: white; font-size: 10px; padding: 2px 4px; border-radius: 8px; font-weight: bold;">New</span>
-            </button>
-        </div>
-        <!-- 加载对话表功能面板 -->
-        <div id="app_header_table_container" style="max-height: 100%; overflow-y: auto; flex-grow: 1;">
-
+        <div id="v2u_shell" class="v2u">
+            <!-- 各个页面的内容 -->
+            <div id="app_header_table_container"></div>
+            <!-- 底部导航：拇指够得到 -->
+            <nav id="table_button_container" class="v2u-nav">
+                <button type="button" id="overview_button" class="v2u-tab"><i class="fa-solid fa-house"></i><span>总览</span></button>
+                <button type="button" id="database_button" class="v2u-tab"><i class="fa-solid fa-table-list"></i><span>表格</span></button>
+                <button type="button" id="roles_button" class="v2u-tab"><i class="fa-solid fa-users"></i><span>角色</span></button>
+                <button type="button" id="editor_button" class="v2u-tab"><i class="fa-solid fa-pen-ruler"></i><span data-i18n="Template">模板</span></button>
+                <button type="button" id="setting_button" class="v2u-tab"><i class="fa-solid fa-sliders"></i><span data-i18n="Settings">设置</span>
+                    <b id="setting_button_new_tag" class="v2u-tab-new" style="display: none;">New</b>
+                </button>
+            </nav>
+            <!-- 底部弹层（整屏阅读、菜单）挂在抽屉里面，点它不会让酒馆把抽屉收起来 -->
+            <div id="v2u_sheet_host"></div>
         </div>
     </div>
 </div>
-
-<style>
-
-    /* 确保按钮栏在滚动时不会被遮挡 */
-    #app_header_table_container {
-        overflow-y: auto;
-        flex-grow: 1;
-    }
-</style>

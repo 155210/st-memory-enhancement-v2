@@ -9,8 +9,13 @@ import { PopupMenu } from "../../components/popupMenu.js";
 import { openTableStatisticsPopup } from "./tableStatistics.js";
 import { openCellHistoryPopup } from "./cellHistory.js";
 import { openSheetStyleRendererPopup } from "./sheetStyleEditor.js";
-import { initTableDirectoryControls, refreshTableDirectory } from "./tableDirectory.js";
 import { Cell } from "../../core/table/cell.js";
+import { asEntries, kindHint, readSheet, renderCards } from "./sheetCards.js";
+// 和 sheetCards.js 里的每页行数一致；不从那边导入，免得模块互相引用时拿不到值
+const CARD_PAGE = 30;
+import { closeBottomSheet, esc, openActionSheet, openBottomSheet } from "./bottomSheet.js";
+import { computeTiers } from "../../core/sendTiers.js";
+import { stripColumnMark } from "../../core/rowIdentity.js";
 
 let tablePopup = null
 let copyTableData = null
@@ -423,6 +428,7 @@ function cellClickEvent(cell) {
             menu.add('<i class="fa fa-arrow-right"></i> 向右插入列', () => handleAction(cell, Cell.CellAction.insertRightColumn));
             menu.add('<i class="fa fa-trash-alt"></i> 删除列', () => confirmAction(() => { handleAction(cell, Cell.CellAction.deleteSelfColumn) }, '确认删除列？'), menu.ItemType.warning);
         } else {
+            menu.add('<i class="fa-solid fa-up-right-and-down-left-from-center"></i> 查看全文', () => openCellReader(cell.parent, cell.uid));
             menu.add('<i class="fa fa-i-cursor"></i> 编辑该单元格', async () => await cellDataEdit(cell));
             menu.add('<i class="fa-solid fa-clock-rotate-left"></i> 单元格历史记录', async () => await cellHistoryView(cell));
         }
@@ -493,62 +499,350 @@ function handleAction(cell, action) {
     if (cell.type === Cell.CellType.column_header) BASE.refreshTempView(true)
 }
 
-export async function renderEditableSheetsDOM(_sheets, _viewSheetsContainer, _cellClickEvent = cellClickEvent) {
-    for (let [index, sheet] of _sheets.entries()) {
-        if (!sheet.enable) continue
-        const instance = sheet
-        console.log("渲染：", instance)
-        const sheetContainer = document.createElement('div')
-        const sheetTitleText = document.createElement('h3')
-        sheetContainer.classList.add('table-directory-sheet-container')
-        sheetContainer.dataset.sheetUid = sheet.uid
-        sheetTitleText.dataset.tableDirectorySheetTitle = sheet.uid
-        sheetTitleText.classList.add('table-directory-sheet-title')
-        sheetContainer.style.overflowX = 'none'
-        sheetContainer.style.overflowY = 'auto'
-        sheetTitleText.innerText = `#${index} ${sheet.name}`
+// ---------------------------------------------------------------- v2 表格页：一次只画一张表
 
-        let sheetElement = null
+const VIEW_KEY = 'v2u_view';
+const SHEET_KEY = 'v2u_sheet';
+const lsGet = (key) => { try { return localStorage.getItem(key); } catch (_) { return null; } };
+const lsSet = (key, value) => { try { localStorage.setItem(key, value); } catch (_) { } };
 
-        if (DERIVED.any.batchEditMode === true) {
-            if (DERIVED.any.batchEditModeSheet?.name === instance.name) {
-                sheetElement = await instance.renderSheet(cellClickEditModeEvent)
-            } else {
-                sheetElement = await instance.renderSheet((cell) => {
-                    cell.element.style.cursor = 'default'
-                })
-                sheetElement.style.cursor = 'default'
-                sheetElement.style.opacity = '0.5'
-                sheetTitleText.style.opacity = '0.5'
-            }
-        } else {
-            sheetElement = await instance.renderSheet(_cellClickEvent)
-        }
-        // 已集成到 Sheet.renderSheet 内部，这里无需再次调用
-        console.log("渲染表格：", sheetElement)
-        $(sheetContainer).append(sheetElement)
+const page = {
+    root: null,
+    sheets: [],
+    data: new Map(),          // sheet.uid → readSheet 的结果
+    sheetUid: null,
+    view: lsGet(VIEW_KEY) === 'wide' ? 'wide' : 'card',
+    query: '',
+    limit: CARD_PAGE,
+    openState: new Map(),     // `${sheetUid}:${行首 uid}` → 手动展开 / 收起
+    present: null,
+};
 
-        // v2：点表名折叠 / 展开；大总结和归档表默认折叠（行多，平时不用看），手动点过的记住
-        const collapsed = sheetCollapsed.has(sheet.uid) ? sheetCollapsed.get(sheet.uid) : defaultCollapsed(sheet)
-        const applyCollapse = (value) => {
-            sheetCollapsed.set(sheet.uid, value)
-            sheetContainer.style.display = value ? 'none' : ''
-            sheetTitleText.innerText = `${value ? '▸' : '▾'} #${index} ${sheet.name}${value ? `（${Math.max(0, sheet.getRowCount() - 1)} 行，点开）` : ''}`
-        }
-        sheetTitleText.style.cursor = 'pointer'
-        sheetTitleText.addEventListener('click', () => applyCollapse(sheetContainer.style.display !== 'none'))
-        applyCollapse(collapsed)
+const editable = () => DERIVED.any.isRenderLastest === true && DERIVED.any.batchEditMode !== true;
 
-        $(_viewSheetsContainer).append(sheetTitleText)
-        $(_viewSheetsContainer).append(sheetContainer)
-        $(_viewSheetsContainer).append(`<hr>`)
+/** 上一楼每张表里的格子 uid，用来标「本楼改了什么」；和宽表高亮用同一个来源，只读不写 */
+function prevCellSets() {
+    const deep = DERIVED.any.renderDeep;
+    if (typeof deep !== 'number' || deep <= 0) return null;
+    try {
+        const prev = BASE.getPieceHash(BASE.getLastSheetsPiece(deep - 1, 3, false)?.piece);
+        if (!prev) return null;
+        const map = new Map();
+        Object.entries(prev).forEach(([uid, hash]) => { if (Array.isArray(hash)) map.set(uid, new Set(hash.flat())); });
+        return map;
+    } catch (_) {
+        return null;
     }
 }
 
-const sheetCollapsed = new Map()
-function defaultCollapsed(sheet) {
-    const { summaryTable, archiveTable } = summaryConfig()
-    return sheet.name === summaryTable || sheet.name === archiveTable
+function $in(selector) {
+    return page.root?.querySelector(selector) || null;
+}
+
+/** 画表格页：楼层、表的标签、当前这张表 */
+async function renderDataPage(sheets) {
+    page.sheets = (sheets || []).filter(sheet => sheet.enable);
+    const prev = prevCellSets();
+    page.data = new Map(page.sheets.map(sheet => [sheet.uid, readSheet(sheet, prev ? (prev.get(sheet.uid) ?? null) : null)]));
+    try { page.present = computeTiers(page.sheets)?.present ?? null; } catch (_) { page.present = null; }
+    if (!page.data.has(page.sheetUid)) {
+        const saved = lsGet(SHEET_KEY);
+        page.sheetUid = page.data.has(saved) ? saved : (page.sheets[0]?.uid ?? null);
+    }
+    drawChrome();
+    await drawSheet();
+}
+
+function drawChrome() {
+    if (!page.root) return;
+    const deep = DERIVED.any.renderDeep;
+    const latest = DERIVED.any.isRenderLastest === true;
+    const hasData = page.sheets.length > 0;
+    const indicator = $in('#table_indicator');
+    if (indicator) indicator.textContent = !hasData ? '还没有表格' : latest ? `第 ${deep} 楼 · 最新` : `第 ${deep} 楼`;
+    const tip = $in('#v2u_old_floor_tip');
+    if (tip) {
+        tip.style.display = hasData && !latest ? '' : 'none';
+        tip.textContent = `这是第 ${deep} 楼当时的表格，只能看，不能改。`;
+    }
+    const latestButton = $in('#table_latest_button');
+    if (latestButton) latestButton.style.display = hasData && !latest ? '' : 'none';
+    const chips = $in('#v2u_sheet_chips');
+    if (chips) {
+        chips.innerHTML = page.sheets.map(sheet => {
+            const data = page.data.get(sheet.uid);
+            return `<button type="button" class="v2u-chip${sheet.uid === page.sheetUid ? ' is-on' : ''}" data-sheet="${esc(sheet.uid)}"><span>${esc(sheet.name)}</span><small>${data.rows.length}</small>${data.changed ? '<i class="v2u-dot" title="本楼有改动"></i>' : ''}</button>`;
+        }).join('');
+        chips.querySelector('.is-on')?.scrollIntoView?.({ block: 'nearest', inline: 'center' });
+    }
+    const add = $in('#v2u_add_row');
+    if (add) add.disabled = !editable() || !page.sheetUid;
+    page.root.querySelectorAll('#v2u_view_switch button').forEach(button => button.classList.toggle('is-on', button.dataset.view === page.view));
+    const info = $in('#v2u_sheet_info');
+    const data = page.data.get(page.sheetUid);
+    if (info) info.textContent = data ? `${data.rows.length} 行 ${data.headers.length} 列${data.changed ? `，本楼改了 ${data.changed} 行` : ''}` : '';
+}
+
+/** 宽表里的长格子：固定显示两行，角上标字数，点格子从菜单里「查看全文」 */
+function clampWideCells(table) {
+    table.querySelectorAll('td.sheet-cell-other').forEach(td => {
+        const text = td.textContent || '';
+        if (text.length <= 40) return;
+        td.textContent = '';
+        td.classList.add('v2u-td-long');
+        const box = document.createElement('div');
+        box.className = 'v2u-td-clamp';
+        box.textContent = text;
+        const count = document.createElement('span');
+        count.className = 'v2u-td-count';
+        count.textContent = `${text.length} 字`;
+        td.append(box, count);
+    });
+}
+
+async function drawSheet() {
+    if (!viewSheetsContainer) return;
+    const batch = DERIVED.any.batchEditMode === true;
+    let data = page.data.get(page.sheetUid);
+    if (batch) {
+        const target = page.sheets.find(sheet => sheet.name === DERIVED.any.batchEditModeSheet?.name);
+        if (target) data = page.data.get(target.uid);
+    }
+    $(viewSheetsContainer).empty();
+    viewSheetsContainer.style.paddingBottom = '24px';
+    if (!data) {
+        viewSheetsContainer.innerHTML = `<div class="v2u-empty">这个聊天还没有表格。正常聊一轮，AI 回复后表格会自动出现。</div>`;
+        return;
+    }
+    if (page.view === 'wide' || batch) {
+        const handler = batch ? cellClickEditModeEvent : (DERIVED.any.isRenderLastest ? cellClickEvent : () => { });
+        const element = await data.sheet.renderSheet(handler);
+        const wrap = document.createElement('div');
+        wrap.className = 'v2u-wide table-directory-sheet-container';
+        wrap.dataset.sheetUid = data.sheet.uid;
+        wrap.append(element);
+        if (!batch) clampWideCells(element);
+        viewSheetsContainer.append(wrap);
+        return;
+    }
+    const hint = kindHint(data);
+    viewSheetsContainer.innerHTML = `${hint ? `<div class="v2u-tip is-info">${esc(hint)}</div>` : ''}<div class="v2u-cards" data-kind="${data.kind}">${renderCards(data, {
+        editable: editable(),
+        query: page.query,
+        limit: page.limit,
+        openState: page.openState,
+        present: page.present,
+        chatLength: USER.getContext().chat?.length || 0,
+    })}</div>`;
+}
+
+/** 切到某张表（给「跳到原表」用）：传表名或 uid */
+export async function selectSheet(nameOrUid) {
+    const sheet = page.sheets.find(s => s.uid === nameOrUid) || page.sheets.find(s => s.name === nameOrUid);
+    if (!sheet) return false;
+    page.sheetUid = sheet.uid;
+    page.query = '';
+    page.limit = CARD_PAGE;
+    const search = $in('#v2u_sheet_search');
+    if (search) search.value = '';
+    lsSet(SHEET_KEY, sheet.uid);
+    drawChrome();
+    await drawSheet();
+    return true;
+}
+
+/** 当前这张表里的格子（只在最新一楼可改时返回，动手之前先把表对齐到最新一楼） */
+function liveCell(uid) {
+    if (!editable()) return null;
+    BASE.getLastestSheets();
+    const sheet = page.data.get(page.sheetUid)?.sheet;
+    return sheet?.cells.get(uid) || null;
+}
+
+function rowTitleOf(data, row) {
+    const first = row?.cells.find(cell => cell.value);
+    return first ? first.value.split('\n')[0].slice(0, 24) : `第 ${row?.r ?? '?'} 行`;
+}
+
+/**
+ * 整屏阅读一格：长内容在这里看全文、按条目看、搜索、编辑
+ * @param {Object} sheet 表格实例
+ * @param {string} uid 格子的 uid
+ */
+export function openCellReader(sheet, uid) {
+    const cell = sheet?.cells.get(uid);
+    if (!cell) return;
+    const data = page.data.get(sheet.uid);
+    const row = data?.rows.find(r => r.cells.some(c => c.uid === uid));
+    const info = row?.cells.find(c => c.uid === uid);
+    const header = info?.header ?? '';
+    const text = String(cell.data?.value ?? '');
+    const entries = asEntries(header, text) || [];
+    const canEdit = editable();
+    const body = document.createElement('div');
+    body.className = 'v2u-reader';
+    let mode = entries.length ? 'entries' : 'raw';
+    let query = '';
+
+    const paint = () => {
+        const key = query.trim().toLowerCase();
+        const hit = (s) => !key || s.toLowerCase().includes(key);
+        const tools = (entries.length || text.length > 200) ? `<div class="v2u-reader-tools">
+            <label class="v2u-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="在这一格里搜" value="${esc(query)}" autocomplete="off"></label>
+            ${entries.length ? `<div class="v2u-seg"><button type="button" data-mode="entries" class="${mode === 'entries' ? 'is-on' : ''}">条目</button><button type="button" data-mode="raw" class="${mode === 'raw' ? 'is-on' : ''}">原文</button></div>` : ''}
+        </div>` : '';
+        let content;
+        if (mode === 'entries') {
+            const list = entries.map((entry, i) => ({ entry, n: i + 1 })).reverse().filter(x => hit(x.entry));
+            content = list.length ? `<ol class="v2u-reader-list">${list.map((x, i) => `<li${i === 0 && !key && info?.changed ? ' class="is-new"' : ''}><span>${x.n}</span><p>${esc(x.entry)}</p></li>`).join('')}</ol>` : `<div class="v2u-empty">没有搜到</div>`;
+        } else {
+            content = text ? `<div class="v2u-reader-text">${key ? esc(text).split(new RegExp(`(${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'i')).map((part, i) => i % 2 ? `<mark>${part}</mark>` : part).join('') : esc(text)}</div>` : `<div class="v2u-empty">这一格是空的${canEdit ? '，点下面的「编辑」填写' : ''}</div>`;
+        }
+        const keepFocus = document.activeElement?.matches?.('.v2u-reader-tools input');
+        body.innerHTML = tools + content;
+        if (keepFocus) { const input = body.querySelector('.v2u-reader-tools input'); input?.focus(); input?.setSelectionRange?.(query.length, query.length); }
+    };
+
+    const actionsRead = () => [
+        { label: '复制', icon: 'fa-copy', grow: false, onClick: () => { navigator.clipboard?.writeText(text).then(() => EDITOR.success('已复制'), () => EDITOR.error('复制失败，请长按文字手动复制')); } },
+        { label: '修改历史', icon: 'fa-clock-rotate-left', onClick: () => { closeBottomSheet(); openCellHistoryPopup(cell); } },
+        ...(canEdit ? [{ label: '编辑', icon: 'fa-pen', kind: 'primary', onClick: startEdit }] : []),
+    ];
+
+    const sheetUi = openBottomSheet({
+        title: stripColumnMark(header) || '格子',
+        sub: [rowTitleOf(data, row), entries.length ? `${entries.length} 条` : '', `${text.length} 字`].filter(Boolean).join(' · '),
+        body,
+        actions: [],
+    });
+    if (!sheetUi) return cellDataEdit(cell);   // 抽屉没打开时退回原来的输入框
+
+    function startEdit() {
+        body.innerHTML = `<textarea class="v2u-reader-edit" spellcheck="false"></textarea>${entries.length ? `<div class="v2u-note">这一列是一条一条往后加的，新内容写在最后面，用「；」隔开。</div>` : ''}`;
+        const area = body.querySelector('textarea');
+        area.value = text;
+        setTimeout(() => { area.focus(); area.setSelectionRange(area.value.length, area.value.length); }, 30);
+        sheetUi.setActions([
+            { label: '取消', onClick: () => { paint(); sheetUi.setActions(actionsRead()); } },
+            {
+                label: '保存', icon: 'fa-check', kind: 'primary', onClick: () => {
+                    const value = area.value;
+                    const live = liveCell(uid);
+                    if (!live) return EDITOR.error('现在看的不是最新一楼的表格，不能改');
+                    closeBottomSheet();
+                    if (value === text) return;
+                    live.editCellData({ value });
+                    refreshContextView();
+                },
+            },
+        ]);
+    }
+
+    body.addEventListener('input', (event) => {
+        if (!event.target.matches('.v2u-reader-tools input')) return;
+        query = event.target.value;
+        paint();
+    });
+    body.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-mode]');
+        if (!button) return;
+        mode = button.dataset.mode;
+        paint();
+    });
+    paint();
+    sheetUi.setActions(actionsRead());
+    if (canEdit && !text) startEdit();
+}
+
+function rowAction(headUid, action) {
+    const cell = liveCell(headUid);
+    if (!cell) return EDITOR.error('现在看的不是最新一楼的表格，不能改');
+    handleAction(cell, action);
+}
+
+function openRowMenu(headUid) {
+    const data = page.data.get(page.sheetUid);
+    const row = data?.rows.find(r => r.head === headUid);
+    if (!row) return;
+    openActionSheet('这一行', [
+        { label: '在上面加一行', icon: 'fa-arrow-up', onClick: () => rowAction(headUid, Cell.CellAction.insertUpRow) },
+        { label: '在下面加一行', icon: 'fa-arrow-down', onClick: () => rowAction(headUid, Cell.CellAction.insertDownRow) },
+        { label: '删掉这一行', icon: 'fa-trash-can', danger: true, hint: '之前楼层的表格不受影响', onClick: () => confirmAction(() => rowAction(headUid, Cell.CellAction.deleteSelfRow), `确认删掉「${rowTitleOf(data, row)}」这一行？`) },
+    ], rowTitleOf(data, row));
+}
+
+function addRow() {
+    const data = page.data.get(page.sheetUid);
+    if (!data || !editable()) return;
+    BASE.getLastestSheets();
+    const hash = data.sheet.hashSheet || [];
+    const lastHead = hash[hash.length - 1]?.[0];
+    const cell = data.sheet.cells.get(lastHead);
+    if (!cell) return EDITOR.error('这张表的结构不完整，加不了行');
+    page.query = '';
+    page.limit = Math.max(page.limit, hash.length + 1);
+    handleAction(cell, Cell.CellAction.insertDownRow);
+}
+
+/** 绑定表格页的事件（只绑一次，全部用事件委托） */
+function bindDataPage(root) {
+    page.root = root;
+    let searchTimer = null;
+    root.addEventListener('click', (event) => {
+        const chip = event.target.closest('#v2u_sheet_chips [data-sheet]');
+        if (chip) return void selectSheet(chip.dataset.sheet);
+        const viewButton = event.target.closest('#v2u_view_switch [data-view]');
+        if (viewButton) {
+            page.view = viewButton.dataset.view === 'wide' ? 'wide' : 'card';
+            lsSet(VIEW_KEY, page.view);
+            drawChrome();
+            return void drawSheet();
+        }
+        if (event.target.closest('#v2u_add_row')) return void EDITOR.tryBlock(addRow, '加一行失败');
+        if (event.target.closest('#v2u_more_button')) {
+            const panel = $in('#v2u_more_panel');
+            panel.style.display = panel.style.display === 'none' ? '' : 'none';
+            return;
+        }
+        if (event.target.closest('#table_latest_button')) {
+            const input = $in('#table_jump_input');
+            if (input) input.value = '';
+            return void renderSheetsDOM(-1);
+        }
+        if (!viewSheetsContainer?.contains(event.target) || page.view === 'wide' || DERIVED.any.batchEditMode === true) return;
+        const hit = event.target.closest('[data-cell], [data-act]');
+        if (!hit) return;
+        const data = page.data.get(page.sheetUid);
+        if (!data) return;
+        if (hit.dataset.cell) return void openCellReader(data.sheet, hit.dataset.cell);
+        const article = hit.closest('[data-head]');
+        const head = article?.dataset.head;
+        switch (hit.dataset.act) {
+            case 'toggle': {
+                if (!head) return;
+                page.openState.set(`${data.sheet.uid}:${head}`, !article.classList.contains('is-open'));
+                return void drawSheet();
+            }
+            case 'rowmenu': return void openRowMenu(head);
+            case 'done': {
+                const row = data.rows.find(r => r.head === head);
+                return void confirmAction(() => rowAction(head, Cell.CellAction.deleteSelfRow), `「${rowTitleOf(data, row)}」做完了，从表里删掉？`);
+            }
+            case 'more': {
+                page.limit += CARD_PAGE;
+                return void drawSheet();
+            }
+        }
+    });
+    root.addEventListener('input', (event) => {
+        if (event.target.id !== 'v2u_sheet_search') return;
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            page.query = event.target.value;
+            page.limit = CARD_PAGE;
+            drawSheet();
+        }, 200);
+    });
 }
 
 /**
@@ -575,7 +869,12 @@ async function renderSheetsDOM(mesId = -1) {
     task.log()
     const { deep: lastestDeep, piece: lastestPiece } = BASE.getLastSheetsPiece()
     const { piece, deep } = mesId === -1 ? { piece: lastestPiece, deep: lastestDeep } : { piece: USER.getContext().chat[mesId], deep: mesId }
-    if (!piece || !BASE.getPieceHash(piece)) return;
+    if (!piece || !BASE.getPieceHash(piece)) {
+        // 这个聊天还没有表格：把上一个聊天留下的画面清掉
+        page.sheets = []; page.data = new Map(); page.sheetUid = null;
+        drawChrome(); await drawSheet();
+        return;
+    }
 
     if (deep === lastestDeep) DERIVED.any.isRenderLastest = true;
     else DERIVED.any.isRenderLastest = false;
@@ -594,11 +893,7 @@ async function renderSheetsDOM(mesId = -1) {
     DERIVED.any.renderingSheets = sheets
 
     task.log()
-    $(viewSheetsContainer).empty()
-    viewSheetsContainer.style.paddingBottom = '150px'
-    renderEditableSheetsDOM(sheets, viewSheetsContainer, DERIVED.any.isRenderLastest ? undefined : () => { })
-    refreshTableDirectory()
-    $("#table_indicator").text(DERIVED.any.isRenderLastest ? "现在是可修改的活动表格" : `现在是第${deep}轮对话中的旧表格，不可被更改`)
+    await renderDataPage(sheets)
     task.log()
 }
 
@@ -606,7 +901,7 @@ let initializedTableView = null
 async function initTableView(mesId) {
     initializedTableView = $(await SYSTEM.getTemplate('manager')).get(0);
     viewSheetsContainer = initializedTableView.querySelector('#tableContainer');
-    initTableDirectoryControls()
+    bindDataPage(initializedTableView)
     // setTableEditTips($(initializedTableView).find('#tableEditTips'));    // 确保在 table_manager_container 存在的情况下查找 tableEditTips
 
     // 设置编辑提示
